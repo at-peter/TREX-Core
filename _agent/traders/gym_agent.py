@@ -2,7 +2,7 @@
 
 import tenacity
 
-import TREX_Core._agent.rewards.net_profit
+
 from TREX_Core._agent._utils.metrics import Metrics
 import asyncio
 from TREX_Core._utils import jkson as json
@@ -12,7 +12,20 @@ import importlib
 
 
 class Trader:
+    """
+    Class: Trader
+    This class implements the gym compatible trader that is used in tandem with EPYMARL TREXEnv.
+
+    """
     def __init__(self, **kwargs):
+        """
+        Initializes the trader using the parameters in the TREX_Core config that was selected.
+        In particular, this sets up the connections to the shared lists that are established in EPYMARL TREXEnv or any
+        other process that seeks to interact with TREX. These lists need to be already initialized before the gym trader
+        attempts to connect with them.
+
+        params: kwargs -> dictionary created from the config json file in TREX_Core._configs
+        """
         # Some util stuffies
         self.__participant = kwargs['trader_fns']
         self.status = {
@@ -21,13 +34,12 @@ class Trader:
             'weights_saving': False,
             'weights_saved': True
         }
-        # Set up the shared lists for data transfer
-        print(self.__participant)
+
+        ##### Setup the shared memory names based on config #####
         self.name = self.__participant['id']
         action_list_name = self.name + "_actions"
         observation_list_name = self.name + "_obs"
         reward_list_name = self.name + "_reward"
-
         '''
         Shared lists get initialized on TREXENV side, so all that the agents have to do is connect to their respective 
         observation and action lists. Agents dont have to worry about making the actions pretty, they just have to send
