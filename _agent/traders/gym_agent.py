@@ -116,8 +116,9 @@ class Trader:
         [bid price, bid quantity, solar ask price, solar ask quantity, bess ask price, bess ask quantity]
         }
         '''
-
+        ##### Initialize the actions
         actions = {}
+        # TODO: these are going to have to go into the obs_creation method, waiting on daniel for these
         bid_price = 0.0
         bid_quantity = 0.0
         solar_ask_price = 0.0
@@ -143,6 +144,16 @@ class Trader:
         print('Observations', obs)
         await self.write_observation_values(obs)
 
+        #### Send rewards into reward buffer:
+        reward = await self._rewards.calculate()
+        # send the reward value into the reward buffer:
+        await self.write_reward_values(reward)
+
+        '''
+        #########################################################################
+        it is here that we wait for the action values to be written from epymarl
+        #########################################################################
+        '''
         # wait for the actions to come from EPYMARL
         await self.read_action_values()
         # actions come in with a set order, they will need to be split up
@@ -304,7 +315,8 @@ class Trader:
 
     async def write_observation_values(self, obs):
         """
-        This method writes the values in the observations array to the observation buffer and then sets the flag for it
+        This method writes the values in the observations array to the observation buffer and then sets the flag for
+        EPYMARL to read the values.
 
         """
 
@@ -317,7 +329,13 @@ class Trader:
         #set the observation flat to written
         await self.write_flag(self.shared_list_observation,True)
 
-
+    async def write_reward_values(self, reward):
+        """
+        This method writes the reward value into the rewards array and then sets the flag for EPYMARL to read the
+        values.
+        """
+        self.shared_list_reward[-1] = reward
+        await self.write_flag(self.shared_list_reward, True)
 
 
 
