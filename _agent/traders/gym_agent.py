@@ -1,11 +1,14 @@
 # from _clients.participants.participants import Residential
 
 import tenacity
+
+import TREX_Core._agent.rewards.net_profit
 from TREX_Core._agent._utils.metrics import Metrics
 import asyncio
 from TREX_Core._utils import jkson as json
 # import serialize
 from multiprocessing import shared_memory
+import importlib
 
 
 class Trader:
@@ -23,27 +26,34 @@ class Trader:
         self.name = self.__participant['id']
         action_list_name = self.name + "_actions"
         observation_list_name = self.name + "_obs"
+        reward_list_name = self.name + "_reward"
 
         '''
         Shared lists get initialized on TREXENV side, so all that the agents have to do is connect to their respective 
         observation and action lists. Agents dont have to worry about making the actions pretty, they just have to send
         them into the buffer. 
         '''
-        self.shared_list_action = shared_memory.ShareableList(name= action_list_name)
-        self.shared_list_observation = shared_memory.ShareableList(name = observation_list_name)
+        self.shared_list_action = shared_memory.ShareableList(name=action_list_name)
+        self.shared_list_observation = shared_memory.ShareableList(name=observation_list_name)
+        self.shared_list_reward = shared_memory.ShareableList(name=reward_list_name)
 
-
-        # TODO: Find out where the action space will be defined: I suspect its not here
         # Initialize the agent learning parameters for the agent (your choice)
         # self.bid_price = kwargs['bid_price'] if 'bid_price' in kwargs else None
         # self.ask_price = kwargs['ask_price'] if 'ask_price' in kwargs else None
 
-        # Initialize the metrics, whatever you
-        # set learning and track_metrics flags
+        ####### Metrics tracking initialization ########
         self.track_metrics = kwargs['track_metrics'] if 'track_metrics' in kwargs else False
         self.metrics = Metrics(self.__participant['id'], track=self.track_metrics)
         if self.track_metrics:
             self.__init_metrics()
+
+        ###### Reward function intialization from config #######
+        reward_function = kwargs['reward_function']
+        if reward_function:
+            self._rewards = importlib.import_module('TREX_Core._agent.rewards.' + reward_function).Reward(
+                self.__participant['timing'],
+                self.__participant['ledger'],
+                self.__participant['market_info'])
 
     def __init_metrics(self):
         import sqlalchemy
@@ -188,6 +198,11 @@ class Trader:
         return True
 
     async def decode_actions(self, action_indices: dict, next_settle):
+        """
+        TODO: November 30, 2022: this method will be used to decode the actions that are received from epymarl.
+
+        """
+
         actions = dict()
         # print(action_indices)
 
