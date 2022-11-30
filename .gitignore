@@ -10,11 +10,8 @@ Logs/
 18P_Tests/
 Alex-recreated/
 BESS_MA_Test/
-BESS_Test/
-
-aklsjfn/Buyer1/
-
-*.v2
+BESS_Test/
+_configs/_credentials.json
 
 _configs/_credentials.json
 

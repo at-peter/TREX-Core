@@ -1,15 +1,31 @@
 # from _clients.participants.participants import Residential
 
 import tenacity
+
+
 from TREX_Core._agent._utils.metrics import Metrics
 import asyncio
 from TREX_Core._utils import jkson as json
 # import serialize
 from multiprocessing import shared_memory
+import importlib
 
 
 class Trader:
+    """
+    Class: Trader
+    This class implements the gym compatible trader that is used in tandem with EPYMARL TREXEnv.
+
+    """
     def __init__(self, **kwargs):
+        """
+        Initializes the trader using the parameters in the TREX_Core config that was selected.
+        In particular, this sets up the connections to the shared lists that are established in EPYMARL TREXEnv or any
+        other process that seeks to interact with TREX. These lists need to be already initialized before the gym trader
+        attempts to connect with them.
+
+        params: kwargs -> dictionary created from the config json file in TREX_Core._configs
+        """
         # Some util stuffies
         self.__participant = kwargs['trader_fns']
         self.status = {
@@ -18,32 +34,38 @@ class Trader:
             'weights_saving': False,
             'weights_saved': True
         }
-        # Set up the shared lists for data transfer
-        print(self.__participant)
+
+        ##### Setup the shared memory names based on config #####
         self.name = self.__participant['id']
         action_list_name = self.name + "_actions"
         observation_list_name = self.name + "_obs"
-
+        reward_list_name = self.name + "_reward"
         '''
         Shared lists get initialized on TREXENV side, so all that the agents have to do is connect to their respective 
         observation and action lists. Agents dont have to worry about making the actions pretty, they just have to send
         them into the buffer. 
         '''
-        self.shared_list_action = shared_memory.ShareableList(name= action_list_name)
-        self.shared_list_observation = shared_memory.ShareableList(name = observation_list_name)
+        self.shared_list_action = shared_memory.ShareableList(name=action_list_name)
+        self.shared_list_observation = shared_memory.ShareableList(name=observation_list_name)
+        self.shared_list_reward = shared_memory.ShareableList(name=reward_list_name)
 
-
-        # TODO: Find out where the action space will be defined: I suspect its not here
         # Initialize the agent learning parameters for the agent (your choice)
         # self.bid_price = kwargs['bid_price'] if 'bid_price' in kwargs else None
         # self.ask_price = kwargs['ask_price'] if 'ask_price' in kwargs else None
 
-        # Initialize the metrics, whatever you
-        # set learning and track_metrics flags
+        ####### Metrics tracking initialization ########
         self.track_metrics = kwargs['track_metrics'] if 'track_metrics' in kwargs else False
         self.metrics = Metrics(self.__participant['id'], track=self.track_metrics)
         if self.track_metrics:
             self.__init_metrics()
+
+        ###### Reward function intialization from config #######
+        reward_function = kwargs['reward_function']
+        if reward_function:
+            self._rewards = importlib.import_module('TREX_Core._agent.rewards.' + reward_function).Reward(
+                self.__participant['timing'],
+                self.__participant['ledger'],
+                self.__participant['market_info'])
 
     def __init_metrics(self):
         import sqlalchemy
@@ -94,8 +116,9 @@ class Trader:
         [bid price, bid quantity, solar ask price, solar ask quantity, bess ask price, bess ask quantity]
         }
         '''
-
+        ##### Initialize the actions
         actions = {}
+        # TODO: these are going to have to go into the obs_creation method, waiting on daniel for these
         bid_price = 0.0
         bid_quantity = 0.0
         solar_ask_price = 0.0
@@ -121,6 +144,16 @@ class Trader:
         print('Observations', obs)
         await self.write_observation_values(obs)
 
+        #### Send rewards into reward buffer:
+        reward = await self._rewards.calculate()
+        # send the reward value into the reward buffer:
+        await self.write_reward_values(reward)
+
+        '''
+        #########################################################################
+        it is here that we wait for the action values to be written from epymarl
+        #########################################################################
+        '''
         # wait for the actions to come from EPYMARL
         await self.read_action_values()
         # actions come in with a set order, they will need to be split up
@@ -137,7 +170,7 @@ class Trader:
         bess_ask_price = self.actions[4]
         bees_ask_quantity = self.actions[5]
 
-        if bid_price and bid_quantity:
+
 
         # if generation:
         #
@@ -188,6 +221,11 @@ class Trader:
         return True
 
     async def decode_actions(self, action_indices: dict, next_settle):
+        """
+        TODO: November 30, 2022: this method will be used to decode the actions that are received from epymarl.
+
+        """
+
         actions = dict()
         # print(action_indices)
 
@@ -277,7 +315,8 @@ class Trader:
 
     async def write_observation_values(self, obs):
         """
-        This method writes the values in the observations array to the observation buffer and then sets the flag for it
+        This method writes the values in the observations array to the observation buffer and then sets the flag for
+        EPYMARL to read the values.
 
         """
 
@@ -290,7 +329,13 @@ class Trader:
         #set the observation flat to written
         await self.write_flag(self.shared_list_observation,True)
 
-
+    async def write_reward_values(self, reward):
+        """
+        This method writes the reward value into the rewards array and then sets the flag for EPYMARL to read the
+        values.
+        """
+        self.shared_list_reward[-1] = reward
+        await self.write_flag(self.shared_list_reward, True)
 
 
 
