@@ -137,7 +137,7 @@ class Trader:
         bess_ask_price = self.actions[4]
         bees_ask_quantity = self.actions[5]
 
-        if bid_price and bid_quantity:
+
 
         # if generation:
         #
