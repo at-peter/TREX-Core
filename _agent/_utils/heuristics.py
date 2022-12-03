@@ -14,7 +14,7 @@ def as_netload(**kwargs):
     net_load = load - generation
     return net_load
 
-def price_as_relative_to_max(**kwargs):
+def relative_to_max(**kwargs):
     raise NotImplementedError
 
 class PriceHeuristics:
@@ -26,18 +26,17 @@ class PriceHeuristics:
         elif type == 'net_load':
             self.get_value = as_netload
         else:
-            print('oulld not find associated heuristicc', type)
+            print('could not find associated heuristic', type)
             raise NotImplementedError
-
 
 class QuantityHeuristics:
     def __init__(self, **kwargs):
         type = kwargs['type']
 
-        if type == 'net_load':
-            self.get_quantity = quantity_as_netload
+        if type == 'net-load':
+            self.get_quantity = as_netload
         else:
-            print('oulld not find assoiated prie behavior for ', type)
+            print('could not find associated heuristic', type)
             raise NotImplementedError
 
 
