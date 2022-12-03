@@ -60,10 +60,12 @@ class Trader:
             if kwargs['actions'][action] != 'learned':
                 heuristic_type = kwargs['actions'][action]
                 if 'price' == action:
-                    self.price_heuristic = PriceHeuristics(price_heuristic_type)
-                if 'quantity' == action:
-                    self.quantity_heuristic = QuantityHeuristics(quantity_heuristic_type)
-                if 'storage' == action:
+                    self.price_heuristic = PriceHeuristics(type=heuristic_type)
+                elif 'quantity' == action:
+                    self.quantity_heuristic = QuantityHeuristics(type=heuristic_type)
+                elif 'storage' == action:
+                    raise NotImplementedError
+                else:
                     raise NotImplementedError
 
 
@@ -86,6 +88,7 @@ class Trader:
                 self.__participant['ledger'],
                 self.__participant['market_info'])
 
+       #  print('init done')
     def __init_metrics(self):
         import sqlalchemy
         '''
@@ -283,7 +286,6 @@ class Trader:
         # Bid related asks
         bid_price = self.actions[0]
         bid_quantity = self.actions[1]
-
         # Solar related asks
         solar_ask_price = self.actions[2]
         solar_ask_quantity = self.actions[3]
@@ -312,7 +314,6 @@ class Trader:
 
             await self.metrics.save(10000)
         return actions
-
 
     async def step(self):
         # actions must come in the following format:
@@ -344,8 +345,15 @@ class Trader:
     async def decode_actions(self, action_indices: dict, ts_act):
         """
         TODO: November 30, 2022: this method will be used to decode the actions that are received from epymarl.
-
+        #one price, one quantity for now
+        if quantity > 0:
+            we ask --> we only need
+            bid beomes quantiity = 0, price = 0
+        else
+            we bid
+            ask becomes quantity = 0, price = 0
         """
+
         ts_act_generation, ts_act_load = await self.__participant['read_profile'](ts_act)
         if "price" in self.action_type:
             if self.action_type['price'] == 'learned':
