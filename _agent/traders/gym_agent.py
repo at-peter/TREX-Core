@@ -1,7 +1,7 @@
 # from _clients.participants.participants import Residential
 
 import tenacity
-
+from datetime import datetime
 
 from TREX_Core._agent._utils.metrics import Metrics
 from TREX_Core._agent._utils.heuristics import PriceHeuristics, QuantityHeuristics
@@ -28,6 +28,7 @@ class Trader:
         params: kwargs -> dictionary created from the config json file in TREX_Core._configs
         """
         # Some util stuffies
+        print('GOT TO THE GYM_AGENT INIT')
         self.__participant = kwargs['trader_fns']
         self.status = {
             'weights_loading': False,
@@ -49,7 +50,9 @@ class Trader:
         self.shared_list_action = shared_memory.ShareableList(name=action_list_name)
         self.shared_list_observation = shared_memory.ShareableList(name=observation_list_name)
         self.shared_list_reward = shared_memory.ShareableList(name=reward_list_name)
-
+        print('shared reward', self.shared_list_reward)
+        print('shared action', self.shared_list_action)
+        print('shared observation', self.shared_list_observation)
         #find the right default behaviors from kwargs['default_behaviors']
         self.observation_variables = kwargs['observations']
 
@@ -142,10 +145,10 @@ class Trader:
         timestamp = ts_obs[0]
         dt = datetime.fromtimestamp(ts_obs[0])
         ts_to_minutes = 1/60
-        ts_to_hour =  ts_to_minutes*(1/60)
+        ts_to_hour = ts_to_minutes*(1/60)
         ts_to_hour_in_day = ts_to_hour*(1/24)
         ts_to_daytype = ts_to_hour_in_day * (1 / 7)
-        ts_to_day_in_year =  ts_to_hour_in_day * (1 / 365)
+        ts_to_day_in_year = ts_to_hour_in_day * (1 / 365)
 
         # ToDo - Daniel - get rid of ugly if loop
         if 'time_sin_hour' in self.observation_variables:
@@ -239,6 +242,7 @@ class Trader:
         [bid price, bid quantity, solar ask price, solar ask quantity, bess ask price, bess ask quantity]
         }
         '''
+        print("in agent.act")
         ##### Initialize the actions
         print('entered act')
         actions = {}
@@ -265,7 +269,7 @@ class Trader:
 
         obs_t = await self.pre_process_obs(ts_obs)
 
-        print('Observations', obs_t)
+        print('Agent Observations', obs_t)
         await self.obs_to_shared_memory(obs_t)
 
         #### Send rewards into reward buffer:

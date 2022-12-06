@@ -385,7 +385,7 @@ class Runner:
                 simulations.remove('training')
 
                 # autochunker to parallelize hyperparam search based on number of cpu cores available
-                cpu_cores = multiprocessing.cpu_count()
+                cpu_cores = multiprocessing.cpu_count() - 1
                 subprocesses = len(self.configs["participants"]) + 2
                 # parallel_sims = cpu_cores // subprocesses
                 parallel_sims = 1
