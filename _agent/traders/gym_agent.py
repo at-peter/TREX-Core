@@ -105,6 +105,7 @@ class Trader:
 
     # Core Functions, learn and act, called from outside
     async def pre_process_obs(self, ts_obs):
+        print('entered preprocessing')
         # ToDo: add histograms for observations
         self.obs_order = []
         data_for_tb = []
@@ -121,7 +122,7 @@ class Trader:
             if self.profile_stats:
                 avg_generation = self.profile_stats['avg_generation']
                 stddev_generation = self.profile_stats['stddev_generation']
-                z_next_generation = (obs_generation - avg_generation) / stddev_generation
+                z_next_generation = (obs_generation - avg_generation) / (stddev_generation + 1e-8)
                 observations_t.append(z_next_generation)
             else:
                 observations_t.append(obs_generation)
@@ -132,7 +133,7 @@ class Trader:
             if self.profile_stats:
                 avg_load = self.profile_stats['avg_consumption']
                 stddev_load = self.profile_stats['stddev_consumption']
-                z_next_load = (obs_load - avg_load) / stddev_load
+                z_next_load = (obs_load - avg_load) / (stddev_load + 1e-8)
                 observations_t.append(z_next_load)
             else:
                 observations_t.append(obs_load)
@@ -239,6 +240,7 @@ class Trader:
         }
         '''
         ##### Initialize the actions
+        print('entered act')
         actions = {}
         # TODO: these are going to have to go into the obs_creation method, waiting on daniel for these
         bid_price = 0.0
