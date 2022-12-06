@@ -19,8 +19,8 @@ if os.name == 'posix':
     uvloop.install()
 
 from aiohttp import web
-
-server = socketio.AsyncServer(async_mode='aiohttp', json=json)
+print("SERVER::: sio server gets called")
+server = socketio.AsyncServer(async_mode='aiohttp', json=json, logger=True, engineio_logger=True)
 app = web.Application()
 server.attach(app)
 
@@ -61,8 +61,8 @@ async def kill_server():
 
 class Default(socketio.AsyncNamespace):
     async def on_connect(self, sid, environ):
-        pass
-        # print('Client connected')
+        # pass
+        print('SERVER::: Client connected', sid)
         # clients[sid] = {}
         # print(clients)
         # print('Client', sid, 'connected')
