@@ -290,9 +290,10 @@ class Trader:
         if reward is not None:
             await self.obs_to_shared_memory(obs_t)
 
+            await self.r_to_shared_memory(reward)
+
             await self.read_action_values()
 
-            await self.r_to_shared_memory(reward)
 
         await self.get_heuristic_actions(ts_act=ts_act)
         '''
