@@ -47,7 +47,7 @@
           "learning": true,
           "observations" : ["generation", "load"],
           "reward_function": "net_profit",
-          "use_synthetic_profile": "test_profile_1kw_square_p2"
+          "use_synthetic_profile": "test_profile_1kw_constant"
         },
         "load": {
           "scale": 1
@@ -71,7 +71,7 @@
           "learning": true,
           "limit_actions": true,
           "reward_function": "net_profit",
-          "use_synthetic_profile": "test_profile_1kw_square_p2+1"
+          "use_synthetic_profile": "test_profile_1kw_constant"
         },
         "load": {
           "scale": 1

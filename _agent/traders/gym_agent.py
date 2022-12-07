@@ -10,6 +10,7 @@ from TREX_Core._utils import jkson as json
 # import serialize
 from multiprocessing import shared_memory
 import importlib
+import numpy as np
 
 
 class Trader:
@@ -58,8 +59,10 @@ class Trader:
 
         #ToDo - Daniel - Think about a nicer way of doing this
         #decode actions, load heuristics if necessary
-        self.action_type = kwargs['actions']
+        self.allowed_actions = kwargs['actions']
+        self.a_t = {}
         for action in kwargs['actions']:
+            self.a_t[action] = None
             if kwargs['actions'][action] != 'learned':
                 heuristic_type = kwargs['actions'][action]
                 if 'price' == action:
@@ -119,11 +122,13 @@ class Trader:
         if not hasattr(self, 'profile_stats'):
             self.profile_stats = await self.__participant['get_profile_stats']()
 
+        #Todo: Daniel - check scales and why its fucked
         if 'generation' in self.observation_variables:
             self.obs_order.append('generation')
 
             if self.profile_stats:
                 avg_generation = self.profile_stats['avg_generation']
+                avg_generation = round(avg_generation, 0) #turn into W, #FixMe: once we switch to decimal W
                 stddev_generation = self.profile_stats['stddev_generation']
                 z_next_generation = (obs_generation - avg_generation) / (stddev_generation + 1e-8)
                 observations_t.append(z_next_generation)
@@ -135,6 +140,7 @@ class Trader:
 
             if self.profile_stats:
                 avg_load = self.profile_stats['avg_consumption']
+                avg_load = round(avg_load, 0)  # turn into W #FixMe: once we switch to decimal W
                 stddev_load = self.profile_stats['stddev_consumption']
                 z_next_load = (obs_load - avg_load) / (stddev_load + 1e-8)
                 observations_t.append(z_next_load)
@@ -265,61 +271,52 @@ class Trader:
 
         #the timestep we observe vs the timestep we act on
         ts_obs = self.next_settle
-        ts_act = self.next_settle
+        ts_act = self.next_settle #ToDo: All - discuss iff shifting battery to last settle makes sense
+
+        #calculations for reward time offset
+        n_rounds_act_to_r = (ts_act[0] - self.last_settle[0])/self.round_duration
+        n_rounds_delta_obs_to_act = (ts_obs[0] - ts_act[0])/self.round_duration
+        n_rounds_delta_obs_to_r = n_rounds_delta_obs_to_act + n_rounds_act_to_r
 
         obs_t = await self.pre_process_obs(ts_obs)
-
         print('Agent Observations', obs_t)
-        await self.obs_to_shared_memory(obs_t)
 
         #### Send rewards into reward buffer:
         reward = await self._rewards.calculate()
-        # send the reward value into the reward buffer:
-        await self.r_to_shared_memory(reward)
 
+        #if we get rewards we pass obs, etc to GYM
+        # this is not the optimal way of doing this but it is going to allow us to keep everything outside of gym clean
+        #ToDO: all - look for better solutions
+        if reward is not None:
+            await self.obs_to_shared_memory(obs_t)
+
+            await self.read_action_values()
+
+            await self.r_to_shared_memory(reward)
+
+        await self.get_heuristic_actions(ts_act=ts_act)
         '''
         #########################################################################
         it is here that we wait for the action values to be written from epymarl
         #########################################################################
         '''
         # wait for the actions to come from EPYMARL
-        await self.read_action_values()
+
         # actions come in with a set order, they will need to be split up
 
-        self.decode_actions({}, ts_act)
-
-        # TODO: these need to be set and coded
-        # Bid related asks
-        bid_price = self.actions[0]
-        bid_quantity = self.actions[1]
-        # Solar related asks
-        solar_ask_price = self.actions[2]
-        solar_ask_quantity = self.actions[3]
-        #Bess related asks
-        bess_ask_price = self.actions[4]
-        bees_ask_quantity = self.actions[5]
-
-
-
-        # if generation:
-        #
-        #     actions ={
-        #         "asks":{next_settle:{
-        #             'quantity':quantity,
-        #             'price': user_actions
-        #         }
-        #         }
+        action_dict_t = await self.decode_actions(ts_act)
         #     }
-
         if self.track_metrics:
             await asyncio.gather(
                 self.metrics.track('timestamp', self.__participant['timing']['current_round'][1]),
-                self.metrics.track('actions_dict', actions),
-                self.metrics.track('next_settle_load', load),
-                self.metrics.track('next_settle_generation', generation))
+                self.metrics.track('actions_dict', action_dict_t),
+                # self.metrics.track('next_settle_load', load),
+                # self.metrics.track('next_settle_generation', generation)
+                )
 
             await self.metrics.save(10000)
-        return actions
+        print(action_dict_t)
+        return action_dict_t
 
     async def step(self):
         # actions must come in the following format:
@@ -348,7 +345,24 @@ class Trader:
     async def reset(self, **kwargs):
         return True
 
-    async def decode_actions(self, action_indices: dict, ts_act):
+    async def get_heuristic_actions(self, ts_act):
+        act_generation, act_load = await self.__participant['read_profile'](ts_act)
+        heuristic_info = {'load': act_load,
+                          'generation': act_generation
+                          }
+        for key in self.allowed_actions:
+            if self.allowed_actions[key] !=  'learned':
+                if key == 'price':
+                    self.a_t[key] = self.price_heuristic.get_value(**heuristic_info)
+                elif key == 'quantity':
+                    self.a_t[key] = self.quantity_heuristic.get_value(**heuristic_info)
+                elif key == 'storage':
+                    raise NotImplementedError
+                else:
+                    print('did not rrcognize action type', key)
+                    raise NotImplementedError
+
+    async def decode_actions(self, ts_act):
         """
         TODO: November 30, 2022: this method will be used to decode the actions that are received from epymarl.
         #one price, one quantity for now
@@ -360,31 +374,17 @@ class Trader:
             ask becomes quantity = 0, price = 0
         """
 
-        ts_act_generation, ts_act_load = await self.__participant['read_profile'](ts_act)
-        if "price" in self.action_type:
-            if self.action_type['price'] == 'learned':
-                price = self.actions[1] #ToDo: find right index
-            else:
-                price = self.price_heuristic(generation=ts_act_generation,
-                                             load=ts_act_load,
-                                             )
-            price = round(price, 4) #ToDo: do we want to do this here or somewhere else? is this the right number?
+        if 'price' in self.a_t:
+            price = self.a_t['price']
+            price = round(price, 4) if price is not None else 0.0
+        else:
+            price = 0.0
 
-        if "quantity" in self.action_type:
-            if self.action_type['quantity'] == 'learned':
-                quantity = self.actions[1] #ToDo: find right index
-            else:
-                quantity = self.quantity_heuristic(generation=ts_act_generation,
-                                             load=ts_act_load,
-                                             )
-            quantity = int(quantity) #ToDo: do we want to do this here or somewhere else?
-
-        if "storage" in self.action_type:
-            if self.action_type['storage'] == 'learned':
-                storage = self.actions[1] #ToDo: find right index
-            else:
-                raise NotImplementedError
-            storage = int(storage) #ToDo: do we want to do this here or somewhere else?
+        if "quantity" in self.a_t:
+            quantity = self.a_t['quantity']
+            quantity = int(quantity) if quantity is not None else 0
+        else:
+            quantity = 0
 
         actions = dict()
         # print(action_indices)
@@ -408,17 +408,15 @@ class Trader:
                 }
             }
 
-        if 'storage' in self.actions:
-            target = self.actions['storage'][action_indices['storage']]
-            if target:
-                actions['bess'] = {
-                    str(ts_act): target
-                }
-        # print(actions)
 
-        #log actions for later histogram plot
-        for action in self.actions:
-            self.episode_actions[action].append(self.actions[action][action_indices[action]])
+        if "storage" in self.a_t:
+            storage = self.a_t['storage']
+            storage = int(storage) if storage != None else 0
+
+            actions['bess'] = {
+                str(ts_act): storage
+            }
+
         return actions
 
     async def check_read_flag(self, shared_list):
@@ -437,24 +435,43 @@ class Trader:
     async def read_action_values(self):
         """
         This method checks the action buffer flag and if the read flag is set, it reads the value in the buffer and stores
-        them in self.actions
+        them in a_t
+
+        # TODO: write conversion into dictionary
+
+        Bid related asks
+        bid_price = self.shared_list_action[0]
+        bid_quantity = self.shared_list_action[1]
+
+        Solar related asks
+        solar_ask_price = self.shared_list_action[2]
+        solar_ask_quantity = self.shared_list_action[3]
+
+        Bess related asks
+        bess_ask_price = self.shared_list_action[4]
+        bees_ask_quantity = self.shared_list_action[5]
 
         """
-        self.actions = []
         # check the action flag
-        while True:
+        shared_list_keys = ['flag', 'price', 'quantity' 'storage']
+        flag = False
+        while not flag:
             flag = await self.check_read_flag(self.shared_list_action)
-            print("Flag", flag)
+            # print("Flag", flag)
             if flag:
+                # ToDo: Daniel or Peter - reformat this to a dictionary so every actionn gets explicitly assigned its entry
                 #read the buffer
-                for e, item in enumerate(self.shared_list_action):
-                    print(e, item)
-                    self.actions.append(item)
-                # self.actions = self.shared_list_action[1:]
-                print('actions', self.actions)
+                for key in shared_list_keys:
+                    if key in self.allowed_actions:
+                        if self.allowed_actions[key] == 'learned':
+                            key_idx = shared_list_keys.index(key)
+                            self.a_t[key] = self.shared_list_action[key_idx]
+
+                # print('actions', self.a_t[key])
                 #reset the flag
-                await self.write_flag(self.shared_list_action, False)
-                break
+
+        await self.write_flag(self.shared_list_action, False) #this sets flag to false for the next step?
+
 
     async def write_flag(self, shared_list, flag):
         """

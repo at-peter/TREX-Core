@@ -3,14 +3,13 @@
 # heuristics args:
 # load: float
 # gen: float
+x = 1
 
-def constant_value(**kwargs):
+def constant_value():
     #ToDo: make sure we have a reasonablle default etc
     return 0.11
 
-def as_netload(**kwargs):
-    load = kwargs['load']
-    generation = kwargs['generation']
+def as_netload(load=0, generation=0):
     net_load = load - generation
     return net_load
 
@@ -34,9 +33,10 @@ class QuantityHeuristics:
         type = kwargs['type']
 
         if type == 'net-load':
-            self.get_quantity = as_netload
+            self.get_value = as_netload
         else:
             print('could not find associated heuristic', type)
             raise NotImplementedError
 
+        print('.')
 
