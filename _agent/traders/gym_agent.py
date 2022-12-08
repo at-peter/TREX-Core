@@ -63,12 +63,12 @@ class Trader:
         self.a_t = {}
         for action in kwargs['actions']:
             self.a_t[action] = None
-            if kwargs['actions'][action] != 'learned':
-                heuristic_type = kwargs['actions'][action]
+            if kwargs['actions'][action]['heuristic'] != 'learned':
+                heuristic = kwargs['actions'][action]['heuristic']
                 if 'price' == action:
-                    self.price_heuristic = PriceHeuristics(type=heuristic_type)
+                    self.price_heuristic = PriceHeuristics(type=heuristic)
                 elif 'quantity' == action:
-                    self.quantity_heuristic = QuantityHeuristics(type=heuristic_type)
+                    self.quantity_heuristic = QuantityHeuristics(type=heuristic)
                 elif 'storage' == action:
                     raise NotImplementedError
                 else:
@@ -146,6 +146,18 @@ class Trader:
                 observations_t.append(z_next_load)
             else:
                 observations_t.append(obs_load)
+
+
+        settle_stats = self.__participant["market_info"]["settle_stats"]
+        print('settlement stats', settle_stats)
+        if 'avg_settlement_sell_price' in self.observation_variables:
+            avg_settlement_sell_price = settle_stats['weighted_avg_settlement_sell_price'] if 'weighted_avg_settlement_sell_price' in settle_stats else 0.069
+            observations_t.append(avg_settlement_sell_price)
+
+        if 'avg_settlement_buy_price' in self.observation_variables:
+            avg_settlement_buy_price = settle_stats['weighted_avg_settlement_buy_price'] if 'weighted_avg_settlement_buy_price' in settle_stats else 0.1449
+            observations_t.append(avg_settlement_buy_price)
+
 
         # ToDo - Daniel - there should be an inbuilt conversion for these formats
         timestamp = ts_obs[0]
@@ -275,8 +287,10 @@ class Trader:
 
         #calculations for reward time offset
         n_rounds_act_to_r = (ts_act[0] - self.last_settle[0])/self.round_duration
-        n_rounds_delta_obs_to_act = (ts_obs[0] - ts_act[0])/self.round_duration
-        n_rounds_delta_obs_to_r = n_rounds_delta_obs_to_act + n_rounds_act_to_r
+        n_rounds_obs_to_act = (ts_obs[0] - ts_act[0])/self.round_duration
+        n_rounds_obs_to_r = n_rounds_obs_to_act + n_rounds_act_to_r
+        n_rounds_current_to_r = (ts_obs[0] - self.current_round[0])/self.round_duration + n_rounds_obs_to_r
+        
 
         obs_t = await self.pre_process_obs(ts_obs)
         print('Agent Observations', obs_t)
@@ -351,16 +365,16 @@ class Trader:
         heuristic_info = {'load': act_load,
                           'generation': act_generation
                           }
-        for key in self.allowed_actions:
-            if self.allowed_actions[key] !=  'learned':
-                if key == 'price':
-                    self.a_t[key] = self.price_heuristic.get_value(**heuristic_info)
-                elif key == 'quantity':
-                    self.a_t[key] = self.quantity_heuristic.get_value(**heuristic_info)
-                elif key == 'storage':
+        for action in self.allowed_actions:
+            if self.allowed_actions[action]['heuristic'] !=  'learned':
+                if action == 'price':
+                    self.a_t[action] = self.price_heuristic.get_value(**heuristic_info)
+                elif action == 'quantity':
+                    self.a_t[action] = self.quantity_heuristic.get_value(**heuristic_info)
+                elif action == 'storage':
                     raise NotImplementedError
                 else:
-                    print('did not rrcognize action type', key)
+                    print('did not recognize action key', action)
                     raise NotImplementedError
 
     async def decode_actions(self, ts_act):
@@ -462,11 +476,11 @@ class Trader:
             if flag:
                 # ToDo: Daniel or Peter - reformat this to a dictionary so every actionn gets explicitly assigned its entry
                 #read the buffer
-                for key in shared_list_keys:
-                    if key in self.allowed_actions:
-                        if self.allowed_actions[key] == 'learned':
-                            key_idx = shared_list_keys.index(key)
-                            self.a_t[key] = self.shared_list_action[key_idx]
+                for action in shared_list_keys:
+                    if action in self.allowed_actions:
+                        if self.allowed_actions[action]['heuristic'] == 'learned':
+                            key_idx = shared_list_keys.index(action)
+                            self.a_t[action] = self.shared_list_action[key_idx]
 
                 # print('actions', self.a_t[key])
                 #reset the flag

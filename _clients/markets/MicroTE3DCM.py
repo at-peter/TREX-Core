@@ -64,6 +64,18 @@ class Market:
             "settlement_price_sell": list()
         }
         self.__round_settle_stats = dict()
+
+        self.__round_bid_stats_buf = {
+            "price_bid": list(),
+            "quantity_bid": list()
+        }
+        self.__round_bid_stats = dict()
+
+        self.__round_ask_stats_buf = {
+            "price_ask": list(),
+            "quantity_ask": list()
+        }
+        self.__round_ask_stats = dict()
         # end new data buffers for Daniel C May
 
         self.__db = {}
@@ -204,8 +216,12 @@ class Market:
         }
         # update start round message for Daniel C May
         # market.update(self.__round_settle_stats)
-        self.__round_settle_stats_buf["settlement_price_buy"].clear()
-        self.__round_settle_stats_buf["settlement_price_sell"].clear()
+        for key in self.__round_settle_stats_buf:
+            self.__round_settle_stats_buf[key].clear()
+        for key in self.__round_ask_stats_buf:
+            self.__round_ask_stats_buf[key].clear()
+        for key in self.__round_bid_stats_buf:
+            self.__round_bid_stats_buf[key].clear()
 
         start_msg = {
             'time': start_time,
@@ -545,6 +561,9 @@ class Market:
         # collect stats for Daniel C May
         self.__round_settle_stats_buf["settlement_price_sell"].append((settlement_price_sell, quantity))
         self.__round_settle_stats_buf["settlement_price_buy"].append((settlement_price_buy, quantity))
+
+        #ToDo: add buffer entries for bid and ask means
+        # self.__round_bid_stats_buf['price_bid'].append(())
 
         # Record successful settlements
         if time_delivery not in self.__settled:
@@ -1111,11 +1130,14 @@ class Market:
             settlements_sell = np.array(self.__round_settle_stats_buf["settlement_price_sell"])
             settlements_buy = np.array(self.__round_settle_stats_buf["settlement_price_buy"])
 
+            weighted_avg_settlement_sell_price = np.average(settlements_sell[:, 0],
+                                                                 weights=settlements_sell[:, 1]) if settlements_sell != [] else self.__grid.sell_price()
+            weighted_avg_settlement_buy_price = np.average(settlements_buy[:, 0], weights=settlements_buy[:, 1]) if settlements_buy != [] else self.__grid.buy_price()
+
             self.__round_settle_stats = {
                 "settled_time": tuple(self.__timing['last_settle']),
-                "weighted_avg_settlement_sell_price": np.average(settlements_sell[:, 0],
-                                                                 weights=settlements_sell[:, 1]),
-                "weighted_avg_settlement_buy_price": np.average(settlements_buy[:, 0], weights=settlements_buy[:, 1])
+                "weighted_avg_settlement_sell_price": weighted_avg_settlement_sell_price,
+                "weighted_avg_settlement_buy_price": weighted_avg_settlement_buy_price
             }
 
             await self.__client.emit('end_round', data="")
