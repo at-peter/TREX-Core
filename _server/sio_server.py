@@ -20,7 +20,11 @@ if os.name == 'posix':
 
 from aiohttp import web
 print("SERVER::: sio server gets called")
-server = socketio.AsyncServer(async_mode='aiohttp', json=json, logger=True, engineio_logger=True)
+server = socketio.AsyncServer(async_mode='aiohttp',
+                              json=json,
+                              # logger=True,
+                              # engineio_logger=True
+                              )
 app = web.Application()
 server.attach(app)
 
