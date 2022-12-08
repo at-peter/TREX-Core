@@ -5,11 +5,11 @@
 # gen: float
 x = 1
 
-def constant_value():
+def constant_value(**kwargs):
     #ToDo: make sure we have a reasonablle default etc
     return 0.11
 
-def as_netload(load=0, generation=0):
+def as_netload(load=0, generation=0, **kwargs):
     net_load = load - generation
     return net_load
 
