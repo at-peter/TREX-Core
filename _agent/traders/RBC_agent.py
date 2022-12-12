@@ -29,7 +29,6 @@ class Trader:
         params: kwargs -> dictionary created from the config json file in TREX_Core._configs
         """
         # Some util stuffies
-        # print('GOT TO THE GYM_AGENT INIT')
         self.__participant = kwargs['trader_fns']
         self.status = {
             'weights_loading': False,
@@ -48,13 +47,6 @@ class Trader:
         observation and action lists. Agents dont have to worry about making the actions pretty, they just have to send
         them into the buffer. 
         '''
-        self.shared_list_action = shared_memory.ShareableList(name=action_list_name)
-        self.shared_list_observation = shared_memory.ShareableList(name=observation_list_name)
-        self.shared_list_reward = shared_memory.ShareableList(name=reward_list_name)
-        # print('shared reward', self.shared_list_reward)
-        # print('shared action', self.shared_list_action)
-        # print('shared observation', self.shared_list_observation)
-        #find the right default behaviors from kwargs['default_behaviors']
         self.observation_variables = kwargs['observations']
 
         #ToDo - Daniel - Think about a nicer way of doing this
@@ -73,6 +65,9 @@ class Trader:
                     raise NotImplementedError
                 else:
                     raise NotImplementedError
+            else:
+                print('this agent cannot learn!')
+                raise NotImplementedError
 
 
         # TODO: Find out where the action space will be defined: I suspect its not here
@@ -114,7 +109,6 @@ class Trader:
         # print('entered preprocessing')
         # ToDo: add histograms for observations
         self.obs_order = []
-        data_for_tb = []
 
         obs_generation, obs_load = await self.__participant['read_profile'](ts_obs)
 
@@ -151,13 +145,16 @@ class Trader:
         settle_stats = self.__participant["market_info"]["settle_stats"]
         # print('settlement stats', settle_stats)
         if 'avg_settlement_sell_price' in self.observation_variables:
+            self.obs_order.append('avg_settlement_sell_price')
             avg_settlement_sell_price = settle_stats['weighted_avg_settlement_sell_price'] if 'weighted_avg_settlement_sell_price' in settle_stats else 0.069
             observations_t.append(avg_settlement_sell_price)
 
         if 'avg_settlement_buy_price' in self.observation_variables:
+            self.obs_order.append('avg_settlement_buy_price')
             avg_settlement_buy_price = settle_stats['weighted_avg_settlement_buy_price'] if 'weighted_avg_settlement_buy_price' in settle_stats else 0.1449
             observations_t.append(avg_settlement_buy_price)
 
+        # print("RBC_agent market info", avg_settlement_buy_price, avg_settlement_sell_price)
 
         # ToDo - Daniel - there should be an inbuilt conversion for these formats
         timestamp = ts_obs[0]
@@ -260,17 +257,6 @@ class Trader:
         [bid price, bid quantity, solar ask price, solar ask quantity, bess ask price, bess ask quantity]
         }
         '''
-        # print("in agent.act")
-        ##### Initialize the actions
-        # print('entered act')
-        actions = {}
-        # TODO: these are going to have to go into the obs_creation method, waiting on daniel for these
-        bid_price = 0.0
-        bid_quantity = 0.0
-        solar_ask_price = 0.0
-        solar_ask_quantity = 0.0
-        bess_ask_price = 0.0
-        bees_ask_quantity = 0.0
 
         # Timing information
         timing = self.__participant['timing']
@@ -290,24 +276,11 @@ class Trader:
         n_rounds_obs_to_act = (ts_obs[0] - ts_act[0])/self.round_duration
         n_rounds_obs_to_r = n_rounds_obs_to_act + n_rounds_act_to_r
         n_rounds_current_to_r = (ts_obs[0] - self.current_round[0])/self.round_duration + n_rounds_obs_to_r
-        
 
         obs_t = await self.pre_process_obs(ts_obs)
-        # print('Agent Observations', obs_t)
 
         #### Send rewards into reward buffer:
         reward = await self._rewards.calculate()
-
-        #if we get rewards we pass obs, etc to GYM
-        # this is not the optimal way of doing this but it is going to allow us to keep everything outside of gym clean
-        #ToDO: all - look for better solutions
-        # if reward is not None:
-        #     await self.obs_to_shared_memory(obs_t)
-        #
-        #     await self.r_to_shared_memory(reward)
-        #
-        #     await self.read_action_values()
-
 
         await self.get_heuristic_actions(ts_act=ts_act)
         '''
@@ -330,7 +303,7 @@ class Trader:
                 )
 
             await self.metrics.save(10000)
-        # print("gym agent action_dict_t", action_dict_t)
+        # print('RBC action_dict_t', action_dict_t)
         return action_dict_t
 
     async def step(self):
@@ -362,12 +335,12 @@ class Trader:
 
     async def get_heuristic_actions(self, ts_act):
         act_generation, act_load = await self.__participant['read_profile'](ts_act)
-        # print('Gym netloads ts_act', act_generation, act_load)
+        # print('RBC netloads ts_act', act_generation, act_load)
         heuristic_info = {'load': act_load,
                           'generation': act_generation
                           }
         for action in self.allowed_actions:
-            if self.allowed_actions[action]['heuristic'] !=  'learned':
+            if self.allowed_actions[action]['heuristic'] != 'learned':
                 if action == 'price':
                     self.a_t[action] = self.price_heuristic.get_value(**heuristic_info)
                 elif action == 'quantity':
@@ -378,12 +351,11 @@ class Trader:
                     print('did not recognize action key', action)
                     raise NotImplementedError
 
-        # print('Gym self.a_t', self.a_t)
+        # print('RBC self.a_t', self.a_t)
         return
 
     async def decode_actions(self, ts_act):
         """
-        TODO: November 30, 2022: this method will be used to decode the actions that are received from epymarl.
         #one price, one quantity for now
         if quantity > 0:
             we ask --> we only need
@@ -438,98 +410,6 @@ class Trader:
 
         return actions
 
-    async def check_read_flag(self, shared_list):
-        """
-        This method checks the read flag in a shared list.
-        Parameters:
-            Shared_list -> shared list object to check, assumes that element 0 is the flag and that flag can be
-                            intepreted as boolean
-            returns ->  Boolean
-        """
-        if shared_list[0]:
-            return True
-        else:
-            return False
-
-    async def read_action_values(self):
-        """
-        This method checks the action buffer flag and if the read flag is set, it reads the value in the buffer and stores
-        them in a_t
-
-        # TODO: write conversion into dictionary
-
-        Bid related asks
-        bid_price = self.shared_list_action[0]
-        bid_quantity = self.shared_list_action[1]
-
-        Solar related asks
-        solar_ask_price = self.shared_list_action[2]
-        solar_ask_quantity = self.shared_list_action[3]
-
-        Bess related asks
-        bess_ask_price = self.shared_list_action[4]
-        bees_ask_quantity = self.shared_list_action[5]
-
-        """
-        # check the action flag
-        shared_list_keys = ['flag', 'price', 'quantity' 'storage']
-        flag = False
-        while not flag:
-            flag = await self.check_read_flag(self.shared_list_action)
-            # print("Flag", flag)
-            if flag:
-                # ToDo: Daniel or Peter - reformat this to a dictionary so every actionn gets explicitly assigned its entry
-                #read the buffer
-                for action in shared_list_keys:
-                    if action in self.allowed_actions:
-                        if self.allowed_actions[action]['heuristic'] == 'learned':
-                            key_idx = shared_list_keys.index(action)
-                            self.a_t[action] = self.shared_list_action[key_idx]
-
-                # print('actions', self.a_t[key])
-                #reset the flag
-
-        await self.write_flag(self.shared_list_action, False) #this sets flag to false for the next step?
-
-    async def write_flag(self, shared_list, flag):
-        """
-        This method sets the flag
-        Parameters:
-            shared_list ->  shared list object to be modified
-            flag -> boolean that indicates write 0 or 1. True sets 1
-        """
-        print(shared_list)
-
-        if flag:
-            shared_list[0] = 1
-            print("Flag was set ")
-        else:
-            shared_list[0] = 0
-            print("Flag was not set")
-
-    async def obs_to_shared_memory(self, obs):
-        """
-        This method writes the values in the observations array to the observation buffer and then sets the flag for
-        EPYMARL to read the values.
-
-        """
-
-        # obs will be an array
-        # pack the values of the obs array into the shares list
-        for e, item in enumerate(obs):
-            # print(e, item)
-            self.shared_list_observation[e+1] = item
-
-        #set the observation flat to written
-        await self.write_flag(self.shared_list_observation,True)
-
-    async def r_to_shared_memory(self, reward):
-        """
-        This method writes the reward value into the rewards array and then sets the flag for EPYMARL to read the
-        values.
-        """
-        self.shared_list_reward[-1] = reward
-        await self.write_flag(self.shared_list_reward, True)
 
 
 

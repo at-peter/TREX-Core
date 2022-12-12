@@ -22,7 +22,7 @@
 
     "market": {
       "id": "",
-      "type": "MicroTE3B",
+      "type": "MicroTE3DCM",
       "close_steps": 2,
       "grid": {
         "price": 0.069,
@@ -36,45 +36,60 @@
         "trader": {
           "track_metrics": true,
           "type": "gym_agent",
-          "bid_price": 0.14,
-          "ask_price": 0.07,
           "P_max": 3000,
           "actions": { // learned if RL agent controls, otherise heuristic name from agent utils heuristics
-            "price":  "learned", // "learned", "constant"
-            "quantity": "net-load", //"learned", "net-load"
-            // "storage": "greedy"
+            "price":
+              {"heuristic": "learned", // "learned", "constant"
+              "max": 0.1449,
+              "min":  0.069},
+            "quantity":
+              {"heuristic": "net-load", //"learned", "net-load"
+                "max": "inf",
+                "min": "-inf"
+              }
+
+            // "storage": {"heuristic": "greedy", "max": 3000, "min": -3000}
           },
           "learning": true,
-          "observations" : ["generation", "load"],
+          "observations" : ["generation", "load", "avg_settlement_sell_price", "avg_settlement_buy_price"],
           "reward_function": "net_profit",
-          "use_synthetic_profile": "test_profile_1kw_square_p2"
+          "use_synthetic_profile": "test_profile_1kw_square_period2_offset"
         },
         "load": {
           "scale": 1
         },
         "generation": {
-          "scale": 1
+          "scale": 0
         }
       },
-      "R6": {
+      "RBC_agent": {
         //serves as baseline for evaluation for battery tests
         "type": "Residential",
         "trader": {
           "track_metrics": true,
-          "type": "basic_trader",
-          "bid_price": 0.14,
-          "ask_price": 0.07,
+          "type": "RBC_agent",
           "P_max": 3000,
-          "actions": [
-            "storage"
-          ],
+          "actions": { // learned if RL agent controls, otherise heuristic name from agent utils heuristics
+            "price":
+              {"heuristic": "constant", // "learned", "constant"
+              "max": 0.1449,
+              "min":  0.069},
+            "quantity":
+              {"heuristic": "net-load", //"learned", "net-load"
+                "max": "inf",
+                "min": "-inf"
+              }
+
+            // "storage": {"heuristic": "greedy", "max": 3000, "min": -3000}
+          },
+          "observations" : ["generation", "load", "avg_settlement_sell_price", "avg_settlement_buy_price"],
           "learning": true,
           "limit_actions": true,
           "reward_function": "net_profit",
-          "use_synthetic_profile": "test_profile_1kw_square_p2+1"
+          "use_synthetic_profile": "test_profile_1kw_square_period2_offset"
         },
         "load": {
-          "scale": 1
+          "scale": 0
         },
         "generation": {
           "scale": 1
