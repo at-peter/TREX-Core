@@ -19,7 +19,9 @@ setup(
                       "sqlalchemy",
                       "sqlalchemy-utils",
                       "tenacity",
-                      "websockets"
+                      "websockets",
+                      "numpy",
+                      "psycopg2",
                       ],
     packages=find_packages()
 )
